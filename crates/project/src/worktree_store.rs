@@ -211,6 +211,7 @@ pub struct WorktreeStore {
     retain_worktrees: bool,
     worktrees: Vec<WorktreeHandle>,
     scanning_enabled: bool,
+    add_to_recent_documents: bool,
     #[allow(clippy::type_complexity)]
     loading_worktrees:
         HashMap<Arc<SanitizedPath>, Shared<Task<Result<Entity<Worktree>, Arc<anyhow::Error>>>>>,
@@ -260,6 +261,7 @@ impl WorktreeStore {
             downstream_client: None,
             worktrees: Vec::new(),
             scanning_enabled: true,
+            add_to_recent_documents: true,
             retain_worktrees,
             initial_scan_complete: watch::channel_with(true),
             state: WorktreeStoreState::Local { fs },
@@ -280,6 +282,7 @@ impl WorktreeStore {
             downstream_client: None,
             worktrees: Vec::new(),
             scanning_enabled: true,
+            add_to_recent_documents: true,
             retain_worktrees,
             initial_scan_complete: watch::channel_with(true),
             state: WorktreeStoreState::Remote {
@@ -313,6 +316,17 @@ impl WorktreeStore {
             }
             .map(WorktreeId::from_proto)
         }
+    }
+
+    /// Stops adding visible local worktrees to the platform's recent documents, such as macOS's
+    /// Recent Items.
+    pub fn keep_out_of_recent_documents(&mut self) {
+        self.add_to_recent_documents = false;
+    }
+
+    /// Whether visible local worktrees are added to the platform's recent documents.
+    pub fn adds_to_recent_documents(&self) -> bool {
+        self.add_to_recent_documents
     }
 
     pub fn disable_scanner(&mut self) {
@@ -931,6 +945,7 @@ impl WorktreeStore {
     ) -> Task<Result<Entity<Worktree>, Arc<anyhow::Error>>> {
         let next_entry_id = self.next_entry_id.clone();
         let scanning_enabled = self.scanning_enabled;
+        let add_to_recent_documents = self.add_to_recent_documents;
 
         let next_worktree_id = self.next_worktree_id();
 
@@ -949,7 +964,7 @@ impl WorktreeStore {
 
             this.update(cx, |this, cx| this.add(&worktree, cx))?;
 
-            if visible {
+            if visible && add_to_recent_documents {
                 cx.update(|cx| {
                     cx.add_recent_document(abs_path.as_path());
                 });
