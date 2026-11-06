@@ -195,6 +195,11 @@ impl Editor {
         cx.notify();
     }
 
+    /// Whether [`Self::disable_expand_excerpt_buttons`] hid the buttons that expand excerpts.
+    pub fn expand_excerpt_buttons_disabled(&self) -> bool {
+        self.disable_expand_excerpt_buttons
+    }
+
     pub fn set_show_git_diff_gutter(&mut self, show_git_diff_gutter: bool, cx: &mut Context<Self>) {
         self.show_git_diff_gutter = Some(show_git_diff_gutter);
         cx.notify();

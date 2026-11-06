@@ -544,6 +544,9 @@ pub struct SplittableEditor {
     /// mode, regardless of the current diff view style setting.
     too_narrow_for_split: bool,
     last_width: Option<Pixels>,
+    /// Whether [`Self::disable_expand_excerpt_buttons`] hid the buttons, so a left editor made
+    /// later hides them too.
+    expand_excerpt_buttons_disabled: bool,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -580,6 +583,13 @@ impl SplittableEditor {
 
     pub fn is_split(&self) -> bool {
         self.lhs.is_some()
+    }
+
+    /// Hides the buttons that expand excerpts on both sides, including on a left side made when
+    /// the diff splits again.
+    pub fn disable_expand_excerpt_buttons(&mut self, cx: &mut Context<Self>) {
+        self.expand_excerpt_buttons_disabled = true;
+        self.update_editors(cx, |editor, cx| editor.disable_expand_excerpt_buttons(cx));
     }
 
     pub fn set_diff_hunk_renderer(
@@ -699,6 +709,7 @@ impl SplittableEditor {
             searched_side: None,
             too_narrow_for_split: false,
             last_width: None,
+            expand_excerpt_buttons_disabled: false,
             _subscriptions: subscriptions,
         }
     }
@@ -729,9 +740,13 @@ impl SplittableEditor {
 
         let splittable = cx.weak_entity();
         let rhs_editor = self.rhs_editor.downgrade();
+        let expand_excerpt_buttons_disabled = self.expand_excerpt_buttons_disabled;
         let lhs_editor = cx.new(|cx| {
             let mut editor =
                 Editor::for_multibuffer(lhs_multibuffer.clone(), Some(project.clone()), window, cx);
+            if expand_excerpt_buttons_disabled {
+                editor.disable_expand_excerpt_buttons(cx);
+            }
             editor.set_number_deleted_lines(true, cx);
             editor.set_delegate_expand_excerpts(true);
             editor.set_diff_hunk_renderer(
