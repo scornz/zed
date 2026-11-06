@@ -828,6 +828,7 @@ pub struct SettingsObserver {
     task_store: Entity<TaskStore>,
     pending_local_settings:
         HashMap<PathTrust, BTreeMap<(WorktreeId, Arc<RelPath>), Option<String>>>,
+    ignore_worktree_settings_files: bool,
     _trusted_worktrees_watcher: Option<Subscription>,
     _user_settings_watcher: Option<Subscription>,
     _editorconfig_watcher: Option<Subscription>,
@@ -944,6 +945,7 @@ impl SettingsObserver {
             downstream_client: None,
             _trusted_worktrees_watcher,
             pending_local_settings: HashMap::default(),
+            ignore_worktree_settings_files: false,
             _user_settings_watcher: None,
             _editorconfig_watcher: Some(_editorconfig_watcher),
             project_id: REMOTE_SERVER_PROJECT_ID,
@@ -1008,6 +1010,7 @@ impl SettingsObserver {
             project_id: REMOTE_SERVER_PROJECT_ID,
             _trusted_worktrees_watcher: None,
             pending_local_settings: HashMap::default(),
+            ignore_worktree_settings_files: false,
             _user_settings_watcher: user_settings_watcher,
             _editorconfig_watcher: None,
             _global_task_config_watcher: Self::subscribe_to_global_task_file_changes(
@@ -1135,6 +1138,14 @@ impl SettingsObserver {
         Ok(())
     }
 
+    /// Stops applying settings, tasks and debug scenarios from files inside local worktrees,
+    /// trusted or not: `.zed/settings.json`, `.zed/tasks.json`, `.zed/debug.json`,
+    /// `.vscode/tasks.json` and `.vscode/launch.json`, in any folder. `.editorconfig` files still
+    /// apply. Call it before adding worktrees: it doesn't undo files already read.
+    pub fn ignore_worktree_settings_files(&mut self) {
+        self.ignore_worktree_settings_files = true;
+    }
+
     fn on_worktree_store_event(
         &mut self,
         _: Entity<WorktreeStore>,
@@ -1250,6 +1261,9 @@ impl SettingsObserver {
             } else {
                 continue;
             };
+            if self.ignore_worktree_settings_files && kind != LocalSettingsKind::Editorconfig {
+                continue;
+            }
 
             let removed = change == &PathChange::Removed;
             let fs = fs.clone();

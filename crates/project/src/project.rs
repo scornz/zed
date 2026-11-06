@@ -2461,6 +2461,11 @@ impl Project {
     }
 
     #[inline]
+    pub fn settings_observer(&self) -> &Entity<SettingsObserver> {
+        &self.settings_observer
+    }
+
+    #[inline]
     pub fn snippets(&self) -> &Entity<SnippetProvider> {
         &self.snippets
     }
