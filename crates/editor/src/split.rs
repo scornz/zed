@@ -6134,6 +6134,100 @@ mod tests {
         );
     }
 
+    #[gpui::test]
+    async fn test_resized_block_redraws_the_other_side_on_the_next_frame(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        use gpui::Styled as _;
+        use rope::Point;
+
+        let (editor, mut cx) = init_test(cx, SoftWrap::None, DiffViewStyle::Split).await;
+        let (buffer, diff) = buffer_with_diff("aaa\nbbb\nccc\n", "aaa\nBBB\nccc\n", &mut cx);
+        editor.update(cx, |editor, cx| {
+            editor.update_excerpts_for_path(
+                PathKey::sorted(0),
+                buffer.clone(),
+                vec![Point::new(0, 0)..buffer.read(cx).max_point()],
+                0,
+                diff.clone(),
+                cx,
+            );
+        });
+        // Shown in the window, which draws it a frame at a time.
+        let workspace = cx.update(|window, cx| {
+            let multi_workspace = window.root::<MultiWorkspace>().flatten().unwrap();
+            multi_workspace.read(cx).workspace().clone()
+        });
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.add_item_to_active_pane(Box::new(editor.clone()), None, false, window, cx);
+        });
+        cx.simulate_resize(gpui::size(px(3000.), px(2000.)));
+        cx.run_until_parked();
+        assert!(editor.read_with(cx, |editor, _| editor.is_split()));
+        // Draw the frames the window asks for until it asks for none, so the next one it asks
+        // for is the block's.
+        let mut frames = 0;
+        while cx.update(|window, cx| window.simulate_next_frame(cx)) > 0 {
+            cx.run_until_parked();
+            frames += 1;
+            assert!(frames < 10, "the window keeps asking for frames");
+        }
+
+        // Below the right side's first row, a block one row tall that draws three.
+        let rhs_editor = editor.read_with(cx, |editor, _| editor.rhs_editor.clone());
+        let lhs_editor =
+            editor.read_with(cx, |editor, _| editor.lhs.as_ref().unwrap().editor.clone());
+        let block_ids = rhs_editor.update(cx, |rhs_editor, cx| {
+            let anchor = rhs_editor
+                .buffer()
+                .read(cx)
+                .snapshot(cx)
+                .anchor_before(Point::new(0, 0));
+            rhs_editor.insert_blocks(
+                [BlockProperties {
+                    placement: BlockPlacement::Below(anchor),
+                    height: Some(1),
+                    style: BlockStyle::Fixed,
+                    render: Arc::new(|cx: &mut crate::display_map::BlockContext| {
+                        div().h(cx.line_height * 3.).into_any()
+                    }),
+                    priority: 0,
+                }],
+                None,
+                cx,
+            )
+        });
+        let balancing_id = rhs_editor.read_with(cx, |rhs_editor, cx| {
+            let display_map = rhs_editor.display_map.read(cx);
+            let companion = display_map.companion().unwrap().read(cx);
+            let mapping =
+                companion.custom_block_to_balancing_block(rhs_editor.display_map.entity_id());
+            *mapping.borrow().get(&block_ids[0]).unwrap()
+        });
+        let drawn_height = |editor: &Entity<crate::Editor>,
+                            id: crate::CustomBlockId,
+                            cx: &mut VisualTestContext| {
+            editor.read_with(cx, |editor, _| {
+                let drawn = &editor.last_position_map.as_ref().unwrap().snapshot;
+                drawn
+                    .block_for_id(crate::BlockId::Custom(id))
+                    .map(|block| block.height())
+            })
+        };
+
+        // The frame that draws the block draws the left side before the right side measures
+        // the block and resizes it, which resizes its balancing block on the left too.
+        cx.run_until_parked();
+        assert_eq!(drawn_height(&rhs_editor, block_ids[0], cx), Some(3));
+        assert_eq!(drawn_height(&lhs_editor, balancing_id, cx), Some(1));
+
+        // The next frame draws the left side again, and asks for no more.
+        cx.update(|window, cx| window.simulate_next_frame(cx));
+        cx.run_until_parked();
+        assert_eq!(drawn_height(&lhs_editor, balancing_id, cx), Some(3));
+        assert_eq!(cx.update(|window, cx| window.simulate_next_frame(cx)), 0);
+    }
+
     /// Gives each of `block_ids`, blocks of `editor`, and its balancing block in `other`, the
     /// content "custom block".
     fn set_balanced_content(

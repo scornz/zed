@@ -9327,6 +9327,13 @@ impl Element for EditorElement {
                                     cx,
                                 )
                             });
+                            // Side by side, the other editor balances these blocks with
+                            // spacers, which resizing them resizes too. The split view may
+                            // have laid that editor out already this frame, and a notify
+                            // while drawing asks for no frame, so ask for the next one.
+                            if snapshot.display_snapshot.companion_snapshot().is_some() {
+                                window.request_animation_frame();
+                            }
                             return self.prepaint(
                                 None,
                                 _inspector_id,
