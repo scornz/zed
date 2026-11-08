@@ -96,6 +96,11 @@ impl WithCount {
     pub fn action(&self) -> &dyn Action {
         &*self.action
     }
+
+    /// How many times the action runs.
+    pub fn count(&self) -> u32 {
+        self.count
+    }
 }
 
 #[derive(Clone, Deserialize, JsonSchema, PartialEq)]
