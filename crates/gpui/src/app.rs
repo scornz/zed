@@ -845,6 +845,16 @@ enum PlatformOwnedDragState {
     RestoredInSourceWindow,
 }
 
+/// What [`App::open_with_system`] and [`App::reveal_path`] ask the platform to do with a path, as
+/// the filter set with [`App::set_path_request_filter`] is told.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PathRequest {
+    /// Open it with the application the system picks for it ([`App::open_with_system`]).
+    OpenWithSystem,
+    /// Show it in the system's file manager, such as Finder ([`App::reveal_path`]).
+    Reveal,
+}
+
 /// Contains the state of the full application, and passed as a reference to a variety of callbacks.
 /// Other [Context] derefs to this type.
 /// You need a reference to an `App` to access the state of a [Entity].
@@ -922,6 +932,7 @@ pub struct App {
     pub(crate) propagate_event: bool,
     pub(crate) prompt_builder: Option<PromptBuilder>,
     open_url_filter: Option<Box<dyn Fn(&str, &App) -> Option<String>>>,
+    path_request_filter: Option<Box<dyn Fn(PathRequest, &Path, &App) -> Option<PathBuf>>>,
     pub(crate) window_invalidators_by_entity:
         FxHashMap<EntityId, FxHashMap<WindowId, WindowInvalidator>>,
     pub(crate) tracked_entities: FxHashMap<WindowId, FxHashSet<EntityId>>,
@@ -1043,6 +1054,7 @@ impl App {
                 propagate_event: true,
                 prompt_builder: Some(PromptBuilder::Default),
                 open_url_filter: None,
+                path_request_filter: None,
                 #[cfg(any(feature = "inspector", debug_assertions))]
                 inspector_renderer: None,
                 #[cfg(any(feature = "inspector", debug_assertions))]
@@ -2035,14 +2047,37 @@ impl App {
         self.platform.prompt_for_new_path(directory, suggested_name)
     }
 
-    /// Reveals the specified path at the platform level, such as in Finder on macOS.
+    /// Reveals the specified path at the platform level, such as in Finder on macOS, or whatever
+    /// the filter set with [`App::set_path_request_filter`] makes of it.
     pub fn reveal_path(&self, path: &Path) {
-        self.platform.reveal_path(path)
+        if let Some(path) = self.filter_path_request(PathRequest::Reveal, path) {
+            self.platform.reveal_path(&path)
+        }
     }
 
-    /// Opens the specified path with the system's default application.
+    /// Opens the specified path with the system's default application, or whatever the filter
+    /// set with [`App::set_path_request_filter`] makes of it.
     pub fn open_with_system(&self, path: &Path) {
-        self.platform.open_with_system(path)
+        if let Some(path) = self.filter_path_request(PathRequest::OpenWithSystem, path) {
+            self.platform.open_with_system(&path)
+        }
+    }
+
+    /// Puts `filter` in front of every [`App::open_with_system`] and [`App::reveal_path`]. It's
+    /// called with what's asked and the path asked for, and returns the path to hand to the
+    /// platform, or `None` to do nothing.
+    pub fn set_path_request_filter(
+        &mut self,
+        filter: impl Fn(PathRequest, &Path, &App) -> Option<PathBuf> + 'static,
+    ) {
+        self.path_request_filter = Some(Box::new(filter));
+    }
+
+    fn filter_path_request(&self, request: PathRequest, path: &Path) -> Option<PathBuf> {
+        match &self.path_request_filter {
+            Some(filter) => filter(request, path, self),
+            None => Some(path.to_path_buf()),
+        }
     }
 
     /// Returns whether the user has configured scrollbars to auto-hide at the platform level.

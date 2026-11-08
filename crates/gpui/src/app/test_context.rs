@@ -436,6 +436,16 @@ impl TestAppContext {
         self.test_platform.opened_url.borrow().clone()
     }
 
+    /// The last path handed to the platform by cx.open_with_system() during this test.
+    pub fn opened_with_system(&self) -> Option<PathBuf> {
+        self.test_platform.opened_with_system.borrow().clone()
+    }
+
+    /// The last path handed to the platform by cx.reveal_path() during this test.
+    pub fn revealed_path(&self) -> Option<PathBuf> {
+        self.test_platform.revealed_path.borrow().clone()
+    }
+
     /// Returns the application identity configured during this test.
     pub fn app_identity(&self) -> Option<(SharedString, SharedString)> {
         self.test_platform.app_identity()

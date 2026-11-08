@@ -46,6 +46,8 @@ pub(crate) struct TestPlatform {
     pub(crate) prompts: RefCell<TestPrompts>,
     screen_capture_sources: RefCell<Vec<TestScreenCaptureSource>>,
     pub opened_url: RefCell<Option<String>>,
+    pub opened_with_system: RefCell<Option<PathBuf>>,
+    pub revealed_path: RefCell<Option<PathBuf>>,
     pub(crate) system_notifications: RefCell<TestSystemNotifications>,
     pub text_system: Arc<dyn PlatformTextSystem>,
     pub expect_restart:
@@ -252,6 +254,8 @@ impl TestPlatform {
             idle_sleep_prevention_fails: Cell::new(false),
             weak: weak.clone(),
             opened_url: Default::default(),
+            opened_with_system: Default::default(),
+            revealed_path: Default::default(),
             system_notifications: Default::default(),
             text_system,
             headless_renderer_factory,
@@ -680,8 +684,8 @@ impl Platform for TestPlatform {
         true
     }
 
-    fn reveal_path(&self, _path: &std::path::Path) {
-        unimplemented!()
+    fn reveal_path(&self, path: &std::path::Path) {
+        *self.revealed_path.borrow_mut() = Some(path.to_path_buf())
     }
 
     fn on_quit(&self, _callback: Box<dyn FnMut() -> bool>) {}
@@ -826,8 +830,8 @@ impl Platform for TestPlatform {
         unimplemented!()
     }
 
-    fn open_with_system(&self, _path: &Path) {
-        unimplemented!()
+    fn open_with_system(&self, path: &Path) {
+        *self.opened_with_system.borrow_mut() = Some(path.to_path_buf())
     }
 }
 
