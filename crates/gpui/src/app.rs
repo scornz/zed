@@ -921,6 +921,7 @@ pub struct App {
     pub(crate) layout_id_buffer: Vec<LayoutId>, // We recycle this memory across layout requests.
     pub(crate) propagate_event: bool,
     pub(crate) prompt_builder: Option<PromptBuilder>,
+    open_url_filter: Option<Box<dyn Fn(&str, &App) -> Option<String>>>,
     pub(crate) window_invalidators_by_entity:
         FxHashMap<EntityId, FxHashMap<WindowId, WindowInvalidator>>,
     pub(crate) tracked_entities: FxHashMap<WindowId, FxHashSet<EntityId>>,
@@ -1041,6 +1042,7 @@ impl App {
                 layout_id_buffer: Default::default(),
                 propagate_event: true,
                 prompt_builder: Some(PromptBuilder::Default),
+                open_url_filter: None,
                 #[cfg(any(feature = "inspector", debug_assertions))]
                 inspector_renderer: None,
                 #[cfg(any(feature = "inspector", debug_assertions))]
@@ -1910,9 +1912,23 @@ impl App {
         self.platform.delete_credentials(url)
     }
 
-    /// Directs the platform's default browser to open the given URL.
+    /// Directs the platform's default browser to open the given URL, or whatever the filter set
+    /// with [`App::set_open_url_filter`] makes of it.
     pub fn open_url(&self, url: &str) {
-        self.platform.open_url(url);
+        match &self.open_url_filter {
+            Some(filter) => {
+                if let Some(url) = filter(url, self) {
+                    self.platform.open_url(&url);
+                }
+            }
+            None => self.platform.open_url(url),
+        }
+    }
+
+    /// Puts `filter` in front of every [`App::open_url`]. It's called with the URL asked for, and
+    /// returns the URL to hand to the platform, or `None` to open nothing.
+    pub fn set_open_url_filter(&mut self, filter: impl Fn(&str, &App) -> Option<String> + 'static) {
+        self.open_url_filter = Some(Box::new(filter));
     }
 
     /// Registers the given URL scheme (e.g. `zed` for `zed://` urls) to be
