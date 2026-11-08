@@ -9,7 +9,7 @@ use serde::Deserialize;
 /// Rewraps the selected text to fit within the line width.
 #[derive(Clone, Deserialize, JsonSchema, PartialEq, Action)]
 #[action(namespace = vim)]
-pub(crate) struct Rewrap {
+pub struct Rewrap {
     pub line_length: Option<usize>,
 }
 

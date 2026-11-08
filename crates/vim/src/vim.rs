@@ -21,6 +21,11 @@ mod visual;
 
 use crate::normal::paste::Paste as VimPaste;
 use collections::HashMap;
+pub use command::{
+    ArgumentRequired, DeleteMarks, GoToLine, OnMatchingLines, ShellCommand, ShellExec, VimEdit,
+    VimNorm, VimRead, VimSave, VimSet, VimSplit, WithCount, WithRange, YankCommand,
+    command_interceptor,
+};
 use editor::{
     Anchor, Bias, Editor, EditorEvent, EditorSettings, MultiBufferOffset, NavigationOverlayKey,
     NavigationTargetOverlay, SelectionEffects,
@@ -38,7 +43,12 @@ pub use mode_indicator::ModeIndicator;
 use motion::Motion;
 use multi_buffer::ToPoint as _;
 use normal::search::SearchSubmit;
+pub use normal::{
+    JoinLines,
+    search::{FindCommand, ReplaceCommand},
+};
 use object::Object;
+pub use rewrap::Rewrap;
 use schemars::JsonSchema;
 use search::BufferSearchBar;
 use serde::Deserialize;
@@ -55,6 +65,7 @@ use theme_settings::ThemeSettings;
 use ui::{IntoElement, SharedString, px};
 use vim_mode_setting::HelixModeSetting;
 use vim_mode_setting::VimModeSetting;
+pub use visual::VisualDeleteLine;
 use workspace::{self, Pane, Workspace};
 
 use crate::{

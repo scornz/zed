@@ -84,6 +84,20 @@ pub struct WithCount {
     action: WrappedAction,
 }
 
+impl WithRange {
+    /// The action run over the range.
+    pub fn action(&self) -> &dyn Action {
+        &*self.action
+    }
+}
+
+impl WithCount {
+    /// The action run with the count.
+    pub fn action(&self) -> &dyn Action {
+        &*self.action
+    }
+}
+
 #[derive(Clone, Deserialize, JsonSchema, PartialEq)]
 pub enum VimOption {
     Wrap(bool),
@@ -202,8 +216,8 @@ pub struct VimSet {
 /// Saves the current file with optional save intent.
 #[derive(Clone, PartialEq, Action)]
 #[action(namespace = vim, no_json, no_register)]
-struct VimSave {
-    pub range: Option<CommandRange>,
+pub struct VimSave {
+    range: Option<CommandRange>,
     pub save_intent: Option<SaveIntent>,
     pub filename: String,
 }
@@ -211,14 +225,14 @@ struct VimSave {
 /// Deletes the specified marks from the editor.
 #[derive(Clone, PartialEq, Action)]
 #[action(namespace = vim, no_json, no_register)]
-struct VimSplit {
+pub struct VimSplit {
     pub vertical: bool,
     pub filename: String,
 }
 
 #[derive(Clone, PartialEq, Action)]
 #[action(namespace = vim, no_json, no_register)]
-enum DeleteMarks {
+pub enum DeleteMarks {
     Marks(String),
     AllLocal,
 }
@@ -240,22 +254,22 @@ actions!(
 /// Opens the specified file for editing.
 #[derive(Clone, PartialEq, Action)]
 #[action(namespace = vim, no_json, no_register)]
-struct VimEdit {
+pub struct VimEdit {
     pub filename: String,
 }
 
 /// Pastes the specified file's contents.
 #[derive(Clone, PartialEq, Action)]
 #[action(namespace = vim, no_json, no_register)]
-struct VimRead {
-    pub range: Option<CommandRange>,
+pub struct VimRead {
+    range: Option<CommandRange>,
     pub filename: String,
 }
 
 #[derive(Clone, PartialEq, Action)]
 #[action(namespace = vim, no_json, no_register)]
-struct VimNorm {
-    pub range: Option<CommandRange>,
+pub struct VimNorm {
+    range: Option<CommandRange>,
     pub command: String,
     /// Places cursors at beginning of each given row.
     /// Overrides given range and current cursor.
@@ -2061,7 +2075,7 @@ fn generate_positions(string: &str, query: &str) -> Vec<usize> {
 /// Applies a command to all lines matching a pattern.
 #[derive(Debug, PartialEq, Clone, Action)]
 #[action(namespace = vim, no_json, no_register)]
-pub(crate) struct OnMatchingLines {
+pub struct OnMatchingLines {
     range: CommandRange,
     search: String,
     action: WrappedAction,
@@ -2131,7 +2145,7 @@ impl OnMatchingLines {
         Some((query_chars.collect::<String>(), range, search, invert))
     }
 
-    pub fn run(&self, vim: &mut Vim, window: &mut Window, cx: &mut Context<Vim>) {
+    pub(crate) fn run(&self, vim: &mut Vim, window: &mut Window, cx: &mut Context<Vim>) {
         let result = vim.update_editor(cx, |vim, editor, cx| {
             self.range.buffer_range(vim, editor, window, cx)
         });
@@ -2432,7 +2446,7 @@ impl Vim {
 }
 
 impl ShellExec {
-    pub fn parse(query: &str, range: Option<CommandRange>) -> Option<Box<dyn Action>> {
+    pub(crate) fn parse(query: &str, range: Option<CommandRange>) -> Option<Box<dyn Action>> {
         let (before, after) = query.split_once('!')?;
         let before = before.trim();
 
@@ -2450,7 +2464,7 @@ impl ShellExec {
         )
     }
 
-    pub fn run(&self, vim: &mut Vim, window: &mut Window, cx: &mut Context<Vim>) {
+    pub(crate) fn run(&self, vim: &mut Vim, window: &mut Window, cx: &mut Context<Vim>) {
         let Some(workspace) = vim.workspace(window, cx) else {
             return;
         };
