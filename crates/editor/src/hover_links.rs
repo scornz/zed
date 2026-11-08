@@ -4,8 +4,8 @@ use crate::{
     editor_settings::GoToDefinitionFallback, scroll::ScrollAmount,
 };
 use gpui::{
-    Action, App, AsyncWindowContext, Context, Entity, Focusable, Global, HighlightStyle, Modifiers,
-    Pixels, Task, UnderlineStyle, WeakEntity, Window, px,
+    Action, App, AsyncWindowContext, Context, Entity, Focusable, HighlightStyle, Modifiers, Pixels,
+    Task, UnderlineStyle, WeakEntity, Window, px,
 };
 use language::{Bias, ToOffset};
 use linkify::{LinkFinder, LinkKind};
@@ -15,7 +15,6 @@ use regex::Regex;
 use settings::{OpenResultsIn, Settings};
 use std::{
     ops::Range,
-    rc::Rc,
     str::FromStr as _,
     sync::{Arc, LazyLock},
 };
@@ -878,28 +877,6 @@ pub(crate) fn find_url_from_range(
     }
 
     None
-}
-
-/// Set by an app with [`set_link_file_guard`].
-#[derive(Clone)]
-struct LinkFileGuard(Rc<dyn Fn(&mut Window, &mut App) -> bool>);
-
-impl Global for LinkFileGuard {}
-
-/// Asks `guard` before a link in an editor opens a local file: a path cmd-clicked in its text,
-/// the one `OpenSelectedFilename` finds, or a path or `file://` URL clicked in a popover's
-/// Markdown ([`crate::hover_popover::open_markdown_url`]). It returns whether to open the file.
-/// Without one, every such file opens.
-pub fn set_link_file_guard(guard: impl Fn(&mut Window, &mut App) -> bool + 'static, cx: &mut App) {
-    cx.set_global(LinkFileGuard(Rc::new(guard)));
-}
-
-/// Whether a link may open a local file, as [`set_link_file_guard`]'s guard says.
-pub(crate) fn link_may_open_file(window: &mut Window, cx: &mut App) -> bool {
-    match cx.try_global::<LinkFileGuard>().cloned() {
-        Some(guard) => (guard.0)(window, cx),
-        None => true,
-    }
 }
 
 #[derive(Debug, Clone)]

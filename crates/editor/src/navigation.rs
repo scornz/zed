@@ -1196,7 +1196,7 @@ impl Editor {
             let result = find_file(&buffer, project, buffer_position, cx).await;
 
             if let Some((_, file_target)) = result
-                && cx.update(hover_links::link_may_open_file)?
+                && cx.update(workspace::link_may_open_file)?
             {
                 let item = workspace
                     .update_in(cx, |workspace, window, cx| {
@@ -1870,7 +1870,7 @@ impl Editor {
                         Ok(Navigated::Yes)
                     }
                     Some(Either::Right(file_target)) => {
-                        if !cx.update(hover_links::link_may_open_file)? {
+                        if !cx.update(workspace::link_may_open_file)? {
                             return Ok(Navigated::No);
                         }
                         // TODO(andrew): respect preview tab settings

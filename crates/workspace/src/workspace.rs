@@ -1571,6 +1571,29 @@ struct DispatchingKeystrokes {
     task: Option<Shared<Task<()>>>,
 }
 
+/// Set by an app with [`set_link_file_guard`].
+#[derive(Clone)]
+struct LinkFileGuard(Rc<dyn Fn(&mut Window, &mut App) -> bool>);
+
+impl Global for LinkFileGuard {}
+
+/// Asks `guard` before a link opens a local file: a path or `file://` URL given to
+/// [`Workspace::open_url_or_file`], such as a link in a language server's prompt, or to
+/// `editor::items::open_resolved_target`, or one an editor finds in its text (a path cmd-clicked,
+/// the one `OpenSelectedFilename` finds, or a path or `file://` URL clicked in a popover's
+/// Markdown). It returns whether to open the file. Without one, every such file opens.
+pub fn set_link_file_guard(guard: impl Fn(&mut Window, &mut App) -> bool + 'static, cx: &mut App) {
+    cx.set_global(LinkFileGuard(Rc::new(guard)));
+}
+
+/// Whether a link may open a local file, as [`set_link_file_guard`]'s guard says.
+pub fn link_may_open_file(window: &mut Window, cx: &mut App) -> bool {
+    match cx.try_global::<LinkFileGuard>().cloned() {
+        Some(guard) => (guard.0)(window, cx),
+        None => true,
+    }
+}
+
 /// Collects everything project-related for a certain window opened.
 /// In some way, is a counterpart of a window, as the [`WindowHandle`] could be downcast into `Workspace`.
 ///
@@ -5274,6 +5297,9 @@ impl Workspace {
     ///     then against visible project worktrees
     /// - Other URI schemes (e.g., `mailto:`, `vscode:`) are passed to the system handler
     ///
+    /// A `file://` URI, or anything that isn't a URL, opens nothing if the guard set with
+    /// [`set_link_file_guard`] says no.
+    ///
     /// # Arguments
     /// * `url_or_path` - The URL or file path to open
     /// * `base_path` - Optional base directory for resolving relative paths (e.g., the
@@ -5290,6 +5316,12 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let url = Url::parse(url_or_path).ok();
+        if url.as_ref().is_none_or(|url| url.scheme() == "file") && !link_may_open_file(window, cx)
+        {
+            return;
+        }
+
         let mut open_abs_path = |this: &mut Self, path, cx: &mut _| {
             let url_or_path = url_or_path.to_owned();
             let task = this.open_abs_path(
@@ -5310,7 +5342,7 @@ impl Workspace {
                 .detach();
         };
 
-        if let Ok(url) = Url::parse(url_or_path) {
+        if let Some(url) = url {
             match url.scheme() {
                 "http" | "https" => cx.open_url(url_or_path),
                 "file" => open_abs_path(self, PathBuf::from(url.path()), cx),

@@ -2191,6 +2191,9 @@ pub async fn open_resolved_target(
     open_target: &workspace::path_link::OpenTarget,
     cx: &mut AsyncWindowContext,
 ) -> Result<bool> {
+    if !cx.update(workspace::link_may_open_file)? {
+        return Ok(false);
+    }
     let path_to_open = open_target.path();
     let mut opened_items = workspace
         .update_in(cx, |workspace, window, cx| {
