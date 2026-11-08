@@ -1195,7 +1195,9 @@ impl Editor {
         cx.spawn_in(window, async move |_, cx| {
             let result = find_file(&buffer, project, buffer_position, cx).await;
 
-            if let Some((_, file_target)) = result {
+            if let Some((_, file_target)) = result
+                && cx.update(hover_links::link_may_open_file)?
+            {
                 let item = workspace
                     .update_in(cx, |workspace, window, cx| {
                         workspace.open_resolved_path(file_target.resolved_path.clone(), window, cx)
@@ -1868,6 +1870,9 @@ impl Editor {
                         Ok(Navigated::Yes)
                     }
                     Some(Either::Right(file_target)) => {
+                        if !cx.update(hover_links::link_may_open_file)? {
+                            return Ok(Navigated::No);
+                        }
                         // TODO(andrew): respect preview tab settings
                         //               `enable_keep_preview_on_code_navigation` and
                         //               `enable_preview_file_from_code_navigation`

@@ -1160,6 +1160,10 @@ pub fn open_markdown_url(
     window: &mut Window,
     cx: &mut App,
 ) {
+    let opens_file = Url::parse(&link).map_or(true, |url| url.scheme() == "file");
+    if opens_file && !crate::hover_links::link_may_open_file(window, cx) {
+        return;
+    }
     if let Some((path, fragment)) = parse_file_link(&link)
         && let Some(workspace) = workspace
     {
