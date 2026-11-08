@@ -1755,26 +1755,33 @@ pub(crate) fn balancing_block(
     my_display_map_id: EntityId,
     companion: &Companion,
 ) -> Option<BlockProperties<Anchor>> {
-    let my_anchor = my_block.placement.start();
-    let my_point = my_anchor.to_point(&my_snapshot);
-    let their_range = companion.convert_point_to_companion(
-        my_display_map_id,
-        my_snapshot,
-        their_snapshot,
-        my_point,
-    );
-    let their_anchor = their_snapshot.anchor_at(their_range.start, my_anchor.bias());
-    let their_placement = match my_block.placement {
-        BlockPlacement::Above(_) => BlockPlacement::Above(their_anchor),
-        BlockPlacement::Below(_) => {
-            if their_range.is_empty() {
-                BlockPlacement::Above(their_anchor)
-            } else {
-                BlockPlacement::Below(their_anchor)
-            }
-        }
+    let below = match my_block.placement {
+        BlockPlacement::Above(_) => false,
+        BlockPlacement::Below(_) => true,
         // Not supported for balancing
         BlockPlacement::Near(_) | BlockPlacement::Replace(_) => return None,
+    };
+    let my_anchor = my_block.placement.start();
+    let my_point = my_anchor.to_point(&my_snapshot);
+    let (their_point, their_below) =
+        match companion.edit_to_companion(my_display_map_id, my_snapshot, their_snapshot, my_point)
+        {
+            Some(edit) => balancing_point(my_point, below, &edit),
+            None => (
+                Point::zero(),
+                below && their_snapshot.max_point() != Point::zero(),
+            ),
+        };
+    let mut their_anchor = their_snapshot.anchor_at(their_point, my_anchor.bias());
+    // At the companion's very end, a right-biased anchor is past every excerpt, so it would move
+    // to the end of any excerpt added after this one.
+    if matches!(their_anchor, Anchor::Max) {
+        their_anchor = their_snapshot.anchor_before(their_point);
+    }
+    let their_placement = if their_below {
+        BlockPlacement::Below(their_anchor)
+    } else {
+        BlockPlacement::Above(their_anchor)
     };
     Some(BlockProperties {
         placement: their_placement,
@@ -1792,6 +1799,30 @@ pub(crate) fn balancing_block(
         }),
         priority: my_block.priority,
     })
+}
+
+/// Where the balancing block for a block above or below `my_point` goes in the companion, and
+/// whether below, given the `edit` that maps the rows around `my_point` there: beside the
+/// companion's row facing `my_point`'s, as the split diff lines rows up. In a hunk, rows face each
+/// other from its start. A row the companion's side of the hunk lacks faces the end of that side,
+/// after its last row and the spacer that pads it, as the row right after a hunk does.
+fn balancing_point(my_point: Point, below: bool, edit: &Edit<Point>) -> (Point, bool) {
+    let rows = |range: &Range<Point>| {
+        if range.is_empty() {
+            0
+        } else {
+            range.end.row - range.start.row + u32::from(range.end.column > 0)
+        }
+    };
+    let into_hunk = my_point.row.saturating_sub(edit.old.start.row);
+    if into_hunk >= rows(&edit.old) {
+        // A row no hunk changes, or the row right after one.
+        (edit.new.end, below)
+    } else if into_hunk < rows(&edit.new) {
+        (Point::new(edit.new.start.row + into_hunk, 0), below)
+    } else {
+        (edit.new.end, edit.new.end.column > 0)
+    }
 }
 
 impl BlockMapWriterCompanion<'_> {

@@ -5941,6 +5941,228 @@ mod tests {
     }
 
     #[gpui::test]
+    async fn test_balancing_blocks_face_the_rows_of_their_blocks(cx: &mut gpui::TestAppContext) {
+        use rope::Point;
+        use unindent::Unindent as _;
+
+        let (editor, mut cx) = init_test(cx, SoftWrap::None, DiffViewStyle::Split).await;
+
+        let base_text = "
+            aaa
+            bbb
+            ccc
+            ddd
+            eee
+        "
+        .unindent();
+        let current_text = "
+            aaa
+            BBB
+            CCC
+            ddd
+            eee
+        "
+        .unindent();
+
+        let (buffer, diff) = buffer_with_diff(&base_text, &current_text, &mut cx);
+
+        editor.update(cx, |editor, cx| {
+            editor.update_excerpts_for_path(
+                PathKey::sorted(0),
+                buffer.clone(),
+                vec![Point::new(0, 0)..buffer.read(cx).max_point()],
+                0,
+                diff.clone(),
+                cx,
+            );
+        });
+
+        cx.run_until_parked();
+
+        // Below a row no hunk changes, and below the second row of a hunk that changes two.
+        let rhs_editor = editor.read_with(cx, |editor, _| editor.rhs_editor.clone());
+        let lhs_editor =
+            editor.read_with(cx, |editor, _| editor.lhs.as_ref().unwrap().editor.clone());
+        let mut block_ids = Vec::new();
+        for row in [0, 2] {
+            block_ids.extend(rhs_editor.update(cx, |rhs_editor, cx| {
+                let anchor = rhs_editor
+                    .buffer()
+                    .read(cx)
+                    .snapshot(cx)
+                    .anchor_before(Point::new(row, 0));
+                rhs_editor.insert_blocks(
+                    [BlockProperties {
+                        placement: BlockPlacement::Below(anchor),
+                        height: Some(1),
+                        style: BlockStyle::Fixed,
+                        render: Arc::new(|_| div().into_any()),
+                        priority: 0,
+                    }],
+                    None,
+                    cx,
+                )
+            }));
+        }
+        set_balanced_content(&rhs_editor, &lhs_editor, &block_ids, &mut cx);
+
+        cx.run_until_parked();
+
+        assert_split_content(
+            &editor,
+            "
+            § <no file>
+            § -----
+            aaa
+            § custom block
+            BBB
+            CCC
+            § custom block
+            ddd
+            eee"
+            .unindent(),
+            "
+            § <no file>
+            § -----
+            aaa
+            § custom block
+            bbb
+            ccc
+            § custom block
+            ddd
+            eee"
+            .unindent(),
+            &mut cx,
+        );
+    }
+
+    #[gpui::test]
+    async fn test_balancing_block_at_the_end_stays_in_its_excerpt(cx: &mut gpui::TestAppContext) {
+        use rope::Point;
+        use unindent::Unindent as _;
+
+        let (editor, mut cx) = init_test(cx, SoftWrap::None, DiffViewStyle::Split).await;
+
+        let base_text = "
+            aaa
+            bbb
+            ccc
+        "
+        .unindent();
+        let current_text = "
+            aaa
+        "
+        .unindent();
+        let (buffer, diff) = buffer_with_diff(&base_text, &current_text, &mut cx);
+        editor.update(cx, |editor, cx| {
+            editor.update_excerpts_for_path(
+                PathKey::sorted(0),
+                buffer.clone(),
+                vec![Point::new(0, 0)..buffer.read(cx).max_point()],
+                0,
+                diff.clone(),
+                cx,
+            );
+        });
+        cx.run_until_parked();
+
+        // Below a removed row, which faces the right side's very end.
+        let rhs_editor = editor.read_with(cx, |editor, _| editor.rhs_editor.clone());
+        let lhs_editor =
+            editor.read_with(cx, |editor, _| editor.lhs.as_ref().unwrap().editor.clone());
+        let block_ids = lhs_editor.update(cx, |lhs_editor, cx| {
+            let anchor = lhs_editor
+                .buffer()
+                .read(cx)
+                .snapshot(cx)
+                .anchor_after(Point::new(1, 0));
+            lhs_editor.insert_blocks(
+                [BlockProperties {
+                    placement: BlockPlacement::Below(anchor),
+                    height: Some(1),
+                    style: BlockStyle::Fixed,
+                    render: Arc::new(|_| div().into_any()),
+                    priority: 0,
+                }],
+                None,
+                cx,
+            )
+        });
+        set_balanced_content(&lhs_editor, &rhs_editor, &block_ids, &mut cx);
+
+        // Another file after it.
+        let (other_buffer, other_diff) = buffer_with_diff("xxx\n", "xxx\n", &mut cx);
+        editor.update(cx, |editor, cx| {
+            editor.update_excerpts_for_path(
+                PathKey::sorted(1),
+                other_buffer.clone(),
+                vec![Point::new(0, 0)..other_buffer.read(cx).max_point()],
+                0,
+                other_diff.clone(),
+                cx,
+            );
+        });
+        cx.run_until_parked();
+
+        assert_split_content(
+            &editor,
+            "
+            § <no file>
+            § -----
+            aaa
+            § spacer
+            § spacer
+            § custom block
+
+            § <no file>
+            § -----
+            xxx"
+            .unindent(),
+            "
+            § <no file>
+            § -----
+            aaa
+            bbb
+            § custom block
+            ccc
+
+            § <no file>
+            § -----
+            xxx"
+            .unindent(),
+            &mut cx,
+        );
+    }
+
+    /// Gives each of `block_ids`, blocks of `editor`, and its balancing block in `other`, the
+    /// content "custom block".
+    fn set_balanced_content(
+        editor: &Entity<crate::Editor>,
+        other: &Entity<crate::Editor>,
+        block_ids: &[crate::CustomBlockId],
+        cx: &mut VisualTestContext,
+    ) {
+        let balancing_ids: Vec<_> = editor.read_with(cx, |editor, cx| {
+            let display_map = editor.display_map.read(cx);
+            let companion = display_map.companion().unwrap().read(cx);
+            let mapping = companion.custom_block_to_balancing_block(editor.display_map.entity_id());
+            let mapping = mapping.borrow();
+            block_ids
+                .iter()
+                .map(|id| *mapping.get(id).unwrap())
+                .collect()
+        });
+        cx.update(|_, cx| {
+            for id in block_ids {
+                set_block_content_for_tests(editor, *id, cx, |_| "custom block".to_string());
+            }
+            for id in balancing_ids {
+                set_block_content_for_tests(other, id, cx, |_| "custom block".to_string());
+            }
+        });
+    }
+
+    #[gpui::test]
     async fn test_edit_spanning_excerpt_boundaries_then_resplit(cx: &mut gpui::TestAppContext) {
         use rope::Point;
         use unindent::Unindent as _;

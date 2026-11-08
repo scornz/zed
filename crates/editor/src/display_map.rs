@@ -313,23 +313,24 @@ impl Companion {
         excerpt.patch.edit_for_old_position(point).new
     }
 
-    pub(crate) fn convert_point_to_companion(
+    /// The edit that maps `point` to the companion: `old` is the rows around it that change
+    /// together, a hunk, or `point` alone, and `new` is the companion's rows for them. `None` when
+    /// the companion has nothing for it.
+    pub(crate) fn edit_to_companion(
         &self,
         display_map_id: EntityId,
         our_snapshot: &MultiBufferSnapshot,
         companion_snapshot: &MultiBufferSnapshot,
         point: MultiBufferPoint,
-    ) -> Range<MultiBufferPoint> {
+    ) -> Option<text::Edit<MultiBufferPoint>> {
         let patches = if self.is_rhs(display_map_id) {
             crate::split::patches_for_rhs_range(companion_snapshot, our_snapshot, point..point)
         } else {
             crate::split::patches_for_lhs_range(companion_snapshot, our_snapshot, point..point)
         };
 
-        let Some(excerpt) = patches.into_iter().next() else {
-            return Point::zero()..companion_snapshot.max_point();
-        };
-        excerpt.patch.edit_for_old_position(point).new
+        let excerpt = patches.into_iter().next()?;
+        Some(excerpt.patch.edit_for_old_position(point))
     }
 }
 
